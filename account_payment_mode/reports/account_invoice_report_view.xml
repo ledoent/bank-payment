@@ -3,7 +3,16 @@
 Copyright 2021 Tecnativa - Víctor Martínez
 License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 -->
-<odoo noupdate="1">
+<odoo>
+    <!-- Release the XML ID before reloading databases installed from the old port. -->
+    <function name="write" model="ir.model.data">
+        <function name="search" model="ir.model.data">
+            <value
+                eval="[('module', '=', 'account_payment_mode'), ('name', '=', 'view_account_invoice_report_search')]"
+            />
+        </function>
+        <value eval="{'noupdate': False}" />
+    </function>
     <record id="view_account_invoice_report_search" model="ir.ui.view">
         <field name="name">account.invoice.report.search</field>
         <field name="model">account.invoice.report</field>

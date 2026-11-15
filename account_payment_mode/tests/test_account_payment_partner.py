@@ -2,9 +2,13 @@
 # Copyright 2021 Tecnativa - Víctor Martínez
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/lgpl.html).
 
+from lxml import etree
+
 from odoo import Command, fields
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests import Form, tagged
+from odoo.tools.convert import convert_file
+from odoo.tools.safe_eval import safe_eval
 
 from odoo.addons.base.tests.common import BaseCommon
 
@@ -618,3 +622,110 @@ class TestAccountPaymentPartner(BaseCommon):
             ).with_company(self.env.ref("base.main_company").id)
         )
         self.assertEqual(move_form.payment_mode_id, payment_mode)
+
+    def test_invoice_and_refund_bank_selection(self):
+        self.partner_bank_model.create(
+            [
+                {
+                    "partner_id": self.customer.id,
+                    "account_number": "123450001",
+                    "company_id": self.company.id,
+                },
+                {
+                    "partner_id": self.customer.id,
+                    "account_number": "123450002",
+                    "company_id": self.company_2.id,
+                },
+            ]
+        )
+        arch = etree.fromstring(self.move_model.get_view(view_type="form")["arch"])
+        for move_type, partner in (
+            ("out_invoice", self.customer),
+            ("out_refund", self.customer),
+            ("in_invoice", self.supplier),
+            ("in_refund", self.supplier),
+        ):
+            with self.subTest(move_type=move_type):
+                move = self.move_model.new(
+                    {
+                        "partner_id": partner.id,
+                        "company_id": self.company.id,
+                        "move_type": move_type,
+                    }
+                )
+                values = {
+                    "move_type": move_type,
+                    "company_id": self.company.id,
+                    "partner_bank_filter_type_domain": (
+                        move.partner_bank_filter_type_domain.id
+                    ),
+                }
+                banks = arch.xpath("//field[@name='partner_bank_id']")
+                visible = [
+                    bank
+                    for bank in banks
+                    if not safe_eval(bank.get("invisible", "False"), values)
+                ]
+                self.assertEqual(len(visible), 1)
+                bank = visible[0]
+                context = safe_eval(bank.get("context"), values)
+                domain = safe_eval(bank.get("domain"), values)
+                self.assertEqual(
+                    context["default_partner_id"],
+                    move.partner_bank_filter_type_domain.id,
+                )
+                expected = self.partner_bank_model.search(
+                    [
+                        ("partner_id", "=", move.partner_bank_filter_type_domain.id),
+                        "|",
+                        ("company_id", "=", self.company.id),
+                        ("company_id", "=", False),
+                    ]
+                )
+                self.assertEqual(self.partner_bank_model.search(domain), expected)
+                self.assertTrue(expected)
+                if move_type == "out_refund":
+                    self.assertTrue(context["display_account_trust"])
+
+    def test_posted_unsent_bill_bank_remains_editable(self):
+        invoice = self._create_invoice("in_invoice", self.supplier)
+        alternative = self.supplier_bank.copy({"account_number": "9012345678"})
+        with Form(invoice) as form:
+            form.partner_bank_id = alternative
+        invoice.action_post()
+        self.assertFalse(invoice.is_move_sent)
+        with Form(invoice) as form:
+            form.partner_bank_id = self.supplier_bank
+        self.assertEqual(invoice.partner_bank_id, self.supplier_bank)
+        invoice.is_move_sent = True
+        with self.assertRaises(AssertionError), Form(invoice) as form:
+            form.partner_bank_id = alternative
+
+    def test_invoice_report_view_released_on_upgrade(self):
+        data = self.env["ir.model.data"]
+        report_data = data.search(
+            [
+                ("module", "=", "account_payment_mode"),
+                ("name", "=", "view_account_invoice_report_search"),
+            ]
+        )
+        unrelated = data.search(
+            [("module", "=", "account_payment_mode"), ("name", "=", "view_move_form")]
+        )
+        report_data.noupdate = True
+        unrelated.noupdate = True
+        view = self.env.ref("account_payment_mode.view_account_invoice_report_search")
+        view.arch_db = "<data/>"
+        for _iteration in range(2):
+            convert_file(
+                self.env,
+                "account_payment_mode",
+                "reports/account_invoice_report_view.xml",
+                {},
+                mode="update",
+            )
+            self.assertFalse(report_data.noupdate)
+            self.assertTrue(unrelated.noupdate)
+            arch = etree.fromstring(view.arch_db)
+            self.assertTrue(arch.xpath("//field[@name='payment_mode_id']"))
+            self.assertTrue(arch.xpath("//filter[@name='payment_mode_id']"))

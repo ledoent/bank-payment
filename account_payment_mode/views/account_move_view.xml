@@ -37,7 +37,7 @@
                 position="attributes"
             >
                 <attribute name="context">
-                    {'default_partner_id':commercial_partner_id}
+                    {'default_partner_id':partner_bank_filter_type_domain}
                 </attribute>
                 <attribute name="domain">
                     [('partner_id', '=', partner_bank_filter_type_domain),
@@ -46,17 +46,26 @@
                 <attribute
                     name="required"
                 >bank_account_required and move_type in ['in_invoice', 'in_refund']</attribute>
-                <attribute name="readonly">state != 'draft'</attribute>
-                <attribute
-                    name="invisible"
-                >move_type not in ['in_invoice', 'in_refund', 'in_receipt']</attribute>
             </xpath>
             <xpath
-                expr="//page[@id='other_tab']//field[@name='partner_bank_id']"
+                expr="//page[@id='other_tab']//field[@name='partner_bank_id'][@invisible=&quot;move_type != 'out_invoice'&quot;]"
                 position="attributes"
             >
                 <attribute name="context">
-                    {'default_partner_id':commercial_partner_id}
+                    {'default_partner_id':partner_bank_filter_type_domain}
+                </attribute>
+                <attribute name="domain">
+                    [('partner_id', '=', partner_bank_filter_type_domain),
+                    '|',('company_id', '=', company_id),('company_id', '=', False)]
+                </attribute>
+            </xpath>
+            <xpath
+                expr="//page[@id='other_tab']//field[@name='partner_bank_id'][@invisible=&quot;move_type != 'out_refund'&quot;]"
+                position="attributes"
+            >
+                <attribute name="context">
+                    {'default_partner_id':partner_bank_filter_type_domain,
+                    'display_account_trust':True}
                 </attribute>
                 <attribute name="domain">
                     [('partner_id', '=', partner_bank_filter_type_domain),
