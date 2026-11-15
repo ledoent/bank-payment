@@ -1,0 +1,1 @@
+# All payment dependencies are supplied by this integration branch.
