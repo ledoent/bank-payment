@@ -656,6 +656,8 @@ class TestAccountPaymentPartner(BaseCommon):
                 values = {
                     "move_type": move_type,
                     "company_id": self.company.id,
+                    "commercial_partner_id": move.commercial_partner_id.id,
+                    "bank_partner_id": move.bank_partner_id.id,
                     "partner_bank_filter_type_domain": (
                         move.partner_bank_filter_type_domain.id
                     ),
@@ -674,7 +676,10 @@ class TestAccountPaymentPartner(BaseCommon):
                     context["default_partner_id"],
                     move.partner_bank_filter_type_domain.id,
                 )
-                expected = self.partner_bank_model.search(
+                bank_accounts = self.partner_bank_model.with_context(
+                    allowed_company_ids=(self.company | self.company_2).ids
+                )
+                expected = bank_accounts.search(
                     [
                         ("partner_id", "=", move.partner_bank_filter_type_domain.id),
                         "|",
@@ -682,7 +687,7 @@ class TestAccountPaymentPartner(BaseCommon):
                         ("company_id", "=", False),
                     ]
                 )
-                self.assertEqual(self.partner_bank_model.search(domain), expected)
+                self.assertEqual(bank_accounts.search(domain), expected)
                 self.assertTrue(expected)
                 if move_type == "out_refund":
                     self.assertTrue(context["display_account_trust"])
